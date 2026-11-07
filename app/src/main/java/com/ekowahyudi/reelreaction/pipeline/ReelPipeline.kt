@@ -91,6 +91,7 @@ class ReelPipeline(private val app: ReelApp) {
             val mainSegment = File(workDir, "main_segment.mp4")
             val editEnd = if (outro != null) 0.85f else 0.97f
             FfmpegRunner.run(
+                app,
                 FfmpegCommands.mainSegment(
                     mainVideo = source.absolutePath,
                     bottomImage = bottomImage.absolutePath,
@@ -117,6 +118,7 @@ class ReelPipeline(private val app: ReelApp) {
 
                 val outroSegment = File(workDir, "outro_segment.mp4")
                 FfmpegRunner.run(
+                    app,
                     FfmpegCommands.outroSegment(
                         outroVideo = outro.absolutePath,
                         output = outroSegment.absolutePath,
@@ -142,6 +144,7 @@ class ReelPipeline(private val app: ReelApp) {
                 )
                 val merged = File(workDir, "final.mp4")
                 FfmpegRunner.run(
+                    app,
                     FfmpegCommands.concat(list.absolutePath, merged.absolutePath),
                     totalDurationMs = 0,
                 ) { }

@@ -23,6 +23,7 @@ class ReelApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashLogger.install(this)
         ytReady = CoroutineScope(SupervisorJob() + Dispatchers.IO).async {
             runCatching {
                 YoutubeDL.init(this@ReelApp)

@@ -30,7 +30,7 @@ Teks watermark dibuat otomatis dari metadata video, mis. `Youtube @Ekoyaki`.
 | Tahap | Teknologi |
 |---|---|
 | Unduh + info akun sumber | [youtubedl-android](https://github.com/JunkFood02/youtubedl-android) (yt-dlp), diperbarui otomatis saat dipakai |
-| Layout, watermark, gabung outro | [FFmpegKit](https://github.com/ffmpegkit-maintained/ffmpeg) (fork yang masih dirawat) |
+| Layout, watermark, gabung outro | FFmpeg bawaan youtubedl-android (sudah termasuk libx264), dijalankan sebagai proses terpisah |
 | Watermark | Digambar dengan Canvas Android menjadi PNG transparan, lalu di-*overlay* |
 | UI | Kotlin + Jetpack Compose |
 

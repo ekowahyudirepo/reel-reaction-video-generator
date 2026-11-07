@@ -24,7 +24,7 @@ android {
         versionCode = appVersionCode
         versionName = appVersionName
 
-        // ffmpeg-kit hanya menyediakan build arm64-v8a (hampir semua HP Android modern).
+        // Hanya arm64-v8a (hampir semua HP Android modern) agar APK tidak membengkak.
         ndk {
             abiFilters += "arm64-v8a"
         }
@@ -69,7 +69,6 @@ android {
         jniLibs {
             // Wajib untuk youtubedl-android: binary di-extract ke disk lalu dieksekusi.
             useLegacyPackaging = true
-            pickFirsts += "**/libc++_shared.so"
         }
     }
 }
@@ -93,8 +92,7 @@ dependencies {
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
 
-    // Edit video: FFmpegKit (fork yang masih dirawat), varian GPL karena butuh libx264.
-    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-min-gpl:6.0.3")
+    // Edit video memakai FFmpeg bawaan youtubedl-android (sudah termasuk libx264), tanpa library kedua.
 
     testImplementation("junit:junit:4.13.2")
 }

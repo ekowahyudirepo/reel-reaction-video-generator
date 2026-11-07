@@ -69,8 +69,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 throw e
             } catch (e: PipelineException) {
                 _state.value = ProcessState.Failed(e.message.orEmpty())
-            } catch (e: Exception) {
-                _state.value = ProcessState.Failed(e.message?.takeIf { it.isNotBlank() } ?: "Terjadi kesalahan tak terduga.")
+            } catch (e: Throwable) {
+                // Throwable (bukan hanya Exception) supaya Error seperti UnsatisfiedLinkError / OutOfMemoryError
+                // tampil sebagai pesan di layar, bukan menutup paksa aplikasi.
+                CrashLogger.record(app, "Pipeline", e)
+                _state.value = ProcessState.Failed(
+                    "${e.javaClass.simpleName}: ${e.message.orEmpty()}".trim().trimEnd(':'),
+                )
             }
         }
     }

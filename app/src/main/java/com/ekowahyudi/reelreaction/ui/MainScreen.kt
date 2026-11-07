@@ -32,12 +32,18 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.ekowahyudi.reelreaction.CrashLogger
 import com.ekowahyudi.reelreaction.MainViewModel
 import com.ekowahyudi.reelreaction.ProcessState
 import com.ekowahyudi.reelreaction.pipeline.PipelineProgress
@@ -73,6 +79,8 @@ fun MainScreen(viewModel: MainViewModel, onOpenSettings: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            CrashReportCard()
+
             if (settings.bottomImagePath == null) {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -120,6 +128,32 @@ fun MainScreen(viewModel: MainViewModel, onOpenSettings: () -> Unit) {
                 is ProcessState.Done -> ResultCard(s.result, onDismiss = viewModel::dismissResult)
                 is ProcessState.Failed -> ErrorCard(s.message, onDismiss = viewModel::dismissResult)
                 ProcessState.Idle -> Unit
+            }
+        }
+    }
+}
+
+/** Menampilkan laporan error terakhir (jika aplikasi sempat berhenti) agar bisa disalin dan dikirim. */
+@Composable
+private fun CrashReportCard() {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    var report by remember { mutableStateOf(CrashLogger.read(context)) }
+    val text = report ?: return
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Aplikasi sempat berhenti", fontWeight = FontWeight.Bold)
+            Text(
+                text.take(700),
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { clipboard.setText(AnnotatedString(text)) }) { Text("Salin laporan") }
+                TextButton(onClick = {
+                    CrashLogger.clear(context)
+                    report = null
+                }) { Text("Tutup") }
             }
         }
     }
