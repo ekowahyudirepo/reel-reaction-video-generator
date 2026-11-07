@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Bingkai 9:16: bagian atas (video) dan bawah (gambar) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,22h36a4,4 0,0 1,4 4v34h-44v-34a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="#FFB74D"
+        android:pathData="M32,64h44v18a4,4 0,0 1,-4 4h-36a4,4 0,0 1,-4 -4z" />
+    <!-- Segitiga play -->
+    <path
+        android:fillColor="#1B1B1F"
+        android:pathData="M48,34l16,10l-16,10z" />
+</vector>
