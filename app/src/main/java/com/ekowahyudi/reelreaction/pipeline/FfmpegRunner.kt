@@ -49,9 +49,14 @@ object FfmpegRunner {
         onProgress: (Float) -> Unit,
     ) = withContext(Dispatchers.IO) {
         val binary = File(context.applicationInfo.nativeLibraryDir, "libffmpeg.so")
-        // Lokasi hasil ekstrak FFmpeg.init() milik youtubedl-android.
-        val libDir = File(context.noBackupFilesDir, "youtubedl-android/packages/ffmpeg/usr/lib")
-        if (!binary.exists() || !libDir.exists()) {
+        // Lokasi hasil ekstrak YoutubeDL.init() / FFmpeg.init() milik youtubedl-android.
+        // Urutan path sama persis dengan yang dipakai yt-dlp: folder python memuat libc++_shared.so
+        // yang dibutuhkan beberapa library FFmpeg (mis. librubberband.so).
+        val packages = File(context.noBackupFilesDir, "youtubedl-android/packages")
+        val pythonLib = File(packages, "python/usr/lib")
+        val ffmpegLib = File(packages, "ffmpeg/usr/lib")
+        val aria2cLib = File(packages, "aria2c/usr/lib")
+        if (!binary.exists() || !ffmpegLib.exists() || !pythonLib.exists()) {
             throw IOException("FFmpeg belum siap. Tutup aplikasi lalu buka lagi, kemudian coba kembali.")
         }
 
@@ -61,8 +66,10 @@ object FfmpegRunner {
             addAll(args)
         }
         val builder = ProcessBuilder(command).redirectErrorStream(true)
-        builder.environment()["LD_LIBRARY_PATH"] =
-            libDir.absolutePath + ":" + (System.getenv("LD_LIBRARY_PATH") ?: "")
+        builder.environment().apply {
+            this["LD_LIBRARY_PATH"] = listOf(pythonLib, ffmpegLib, aria2cLib).joinToString(":") { it.absolutePath }
+            this["TMPDIR"] = context.cacheDir.absolutePath
+        }
 
         val process = try {
             builder.start()
