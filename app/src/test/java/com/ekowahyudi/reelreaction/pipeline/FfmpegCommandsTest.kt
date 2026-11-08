@@ -101,6 +101,50 @@ class FfmpegCommandsTest {
     }
 
     @Test
+    fun canvasVariantAvoidsVstackPadAndFps() {
+        for (fit in VideoFit.entries) {
+            val args = FfmpegCommands.mainSegment(
+                "in.mp4", "b.jpg", "wm.png", "out.mp4", fit, true,
+                variant = FilterVariant.CANVAS,
+            )
+            val f = filterOf(args)
+            assertFalse(f.contains("vstack"))
+            assertFalse(f.contains("pad="))
+            assertFalse(f.contains("fps="))
+            assertFalse(f.contains("setsar"))
+            assertTrue(f.contains("overlay=0:880"))
+            // input ke-4 adalah kanvas hitam
+            assertTrue(args.contains("color=c=black:s=1080x1920:r=30"))
+        }
+    }
+
+    @Test
+    fun canvasVariantPutsSilenceAfterCanvasInput() {
+        val args = FfmpegCommands.mainSegment(
+            "in.mp4", "b.jpg", "wm.png", "out.mp4", VideoFit.CROP, mainHasAudio = false,
+            variant = FilterVariant.CANVAS,
+        )
+        assertEquals("4:a:0", args[args.indexOf("-map") + 3])
+    }
+
+    @Test
+    fun faststartOnlyWhenRequested() {
+        assertTrue(FfmpegCommands.mainSegment("i", "b", "w", "o", VideoFit.CROP, true).contains("+faststart"))
+        assertFalse(
+            FfmpegCommands.mainSegment("i", "b", "w", "o", VideoFit.CROP, true, faststart = false)
+                .contains("+faststart"),
+        )
+        assertFalse(FfmpegCommands.outroSegment("i", "o", true, faststart = false).contains("+faststart"))
+        assertFalse(FfmpegCommands.concat("l", "o", faststart = false).contains("+faststart"))
+        assertEquals("o", FfmpegCommands.concat("l", "o", faststart = false).last())
+    }
+
+    @Test
+    fun editPlanLabelNamesVariantAndEncoder() {
+        assertEquals("kanvas + mpeg4", EditPlan(FilterVariant.CANVAS, EncodeProfile.MPEG4).label)
+    }
+
+    @Test
     fun concatCopiesStreams() {
         val args = FfmpegCommands.concat("list.txt", "final.mp4")
         assertTrue(args.containsAll(listOf("-f", "concat", "-c", "copy")))

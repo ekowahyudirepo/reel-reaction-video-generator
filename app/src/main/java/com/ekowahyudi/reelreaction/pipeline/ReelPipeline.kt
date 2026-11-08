@@ -90,8 +90,8 @@ class ReelPipeline(private val app: ReelApp) {
 
             val mainSegment = File(workDir, "main_segment.mp4")
             val editEnd = if (outro != null) 0.85f else 0.97f
-            val profile = encodeWithFallback(
-                profiles = EncodeProfile.entries,
+            val plan = encodeWithFallback(
+                plans = MAIN_PLANS,
                 totalDurationMs = sourceProbe.durationMs,
                 build = { p ->
                     FfmpegCommands.mainSegment(
@@ -101,14 +101,18 @@ class ReelPipeline(private val app: ReelApp) {
                         output = mainSegment.absolutePath,
                         fit = settings.videoFit,
                         mainHasAudio = sourceProbe.hasAudio,
-                        profile = p,
+                        profile = p.profile,
+                        variant = p.variant,
+                        faststart = false,
                     )
                 },
-                diagnosticInputs = {
-                    listOf(
-                        "video unduhan" to source.absolutePath,
-                        "gambar bawah" to bottomImage.absolutePath,
-                        "watermark" to watermarkPng.absolutePath,
+                diagnose = {
+                    FfmpegRunner.diagnose(
+                        app,
+                        video = source.absolutePath,
+                        image = bottomImage.absolutePath,
+                        watermark = watermarkPng.absolutePath,
+                        workDir = File(workDir, "diag"),
                     )
                 },
             ) { frac, label ->
@@ -129,17 +133,26 @@ class ReelPipeline(private val app: ReelApp) {
                 val outroSegment = File(workDir, "outro_segment.mp4")
                 // Outro harus memakai encoder yang sama dengan segmen utama agar bisa digabung tanpa re-encode.
                 encodeWithFallback(
-                    profiles = listOf(profile),
+                    plans = listOf(plan),
                     totalDurationMs = outroProbe.durationMs,
                     build = { p ->
                         FfmpegCommands.outroSegment(
                             outroVideo = outro.absolutePath,
                             output = outroSegment.absolutePath,
                             outroHasAudio = outroProbe.hasAudio,
-                            profile = p,
+                            profile = p.profile,
+                            faststart = false,
                         )
                     },
-                    diagnosticInputs = { listOf("video penutup" to outro.absolutePath) },
+                    diagnose = {
+                        FfmpegRunner.diagnose(
+                            app,
+                            video = outro.absolutePath,
+                            image = null,
+                            watermark = null,
+                            workDir = File(workDir, "diag"),
+                        )
+                    },
                 ) { frac, _ ->
                     report(
                         PipelineProgress(
@@ -160,7 +173,7 @@ class ReelPipeline(private val app: ReelApp) {
                 val merged = File(workDir, "final.mp4")
                 FfmpegRunner.run(
                     app,
-                    FfmpegCommands.concat(list.absolutePath, merged.absolutePath),
+                    FfmpegCommands.concat(list.absolutePath, merged.absolutePath, faststart = false),
                     totalDurationMs = 0,
                 ) { }
                 merged
@@ -181,30 +194,38 @@ class ReelPipeline(private val app: ReelApp) {
     }
 
     /**
-     * Menjalankan FFmpeg dengan tiap mode di [profiles] sampai ada yang berhasil dan mengembalikan mode itu.
-     * Bila semuanya gagal, menjalankan diagnostik lalu melempar [PipelineException] berisi ringkasan.
+     * Menjalankan FFmpeg dengan tiap [EditPlan] di [plans] sampai ada yang berhasil dan mengembalikan
+     * plan itu. Bila semuanya gagal, menjalankan diagnostik lalu melempar [PipelineException] berisi ringkasan.
      */
     private suspend fun encodeWithFallback(
-        profiles: List<EncodeProfile>,
+        plans: List<EditPlan>,
         totalDurationMs: Long,
-        build: (EncodeProfile) -> List<String>,
-        diagnosticInputs: () -> List<Pair<String, String>>,
+        build: (EditPlan) -> List<String>,
+        diagnose: suspend () -> String,
         onProgress: (Float, String) -> Unit,
-    ): EncodeProfile {
+    ): EditPlan {
         val failures = mutableListOf<String>()
-        for (profile in profiles) {
+        for (plan in plans) {
             try {
-                FfmpegRunner.run(app, build(profile), totalDurationMs) { onProgress(it, profile.label) }
-                return profile
+                FfmpegRunner.run(app, build(plan), totalDurationMs) { onProgress(it, plan.label) }
+                return plan
             } catch (e: FfmpegException) {
                 val lastLine = e.tail.lineSequence().lastOrNull { it.isNotBlank() }
                 val signal = if (e.exitCode > 128) " sinyal ${e.exitCode - 128}" else ""
-                failures += "• ${profile.label}: kode ${e.exitCode}$signal" + (lastLine?.let { " — $it" } ?: "")
+                failures += "• ${plan.label}: kode ${e.exitCode}$signal" + (lastLine?.let { " — $it" } ?: "")
             }
         }
-        val diagnostics = FfmpegRunner.diagnose(app, diagnosticInputs())
         throw PipelineException(
-            "Proses edit video gagal di semua mode.\n${failures.joinToString("\n")}\n\nDiagnostik FFmpeg:\n$diagnostics",
+            "Proses edit video gagal di semua cara.\n${failures.joinToString("\n")}\n\nDiagnostik FFmpeg:\n${diagnose()}",
+        )
+    }
+
+    private companion object {
+        /** Urutan cara menjalankan tahap edit; yang pertama berhasil dipakai. */
+        val MAIN_PLANS = listOf(
+            EditPlan(FilterVariant.STANDARD, EncodeProfile.X264),
+            EditPlan(FilterVariant.CANVAS, EncodeProfile.X264),
+            EditPlan(FilterVariant.CANVAS, EncodeProfile.MPEG4),
         )
     }
 

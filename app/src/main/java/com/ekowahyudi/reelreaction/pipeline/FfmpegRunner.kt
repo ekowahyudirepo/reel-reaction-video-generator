@@ -141,15 +141,22 @@ object FfmpegRunner {
     }
 
     /**
-     * Menjalankan serangkaian tes kecil untuk melihat bagian FFmpeg mana yang bermasalah di perangkat ini.
-     * [inputs] adalah pasangan (label, path) file yang ingin dicoba dibaca.
+     * Menjalankan serangkaian tes kecil, satu proses FFmpeg per tes, untuk melihat bagian FFmpeg mana
+     * yang crash di perangkat ini. Tes memakai sumber sintetis (lavfi) dan, bila ada, file asli.
      */
-    suspend fun diagnose(context: Context, inputs: List<Pair<String, String>>): String {
+    suspend fun diagnose(
+        context: Context,
+        video: String?,
+        image: String?,
+        watermark: String?,
+        workDir: File,
+    ): String {
+        workDir.mkdirs()
         val report = StringBuilder()
 
         suspend fun step(name: String, args: List<String>, showFirstLine: Boolean = false) {
             val outcome = try {
-                val r = withTimeout(STEP_TIMEOUT_MS) { exec(context, args, maxLines = 400) }
+                val r = withTimeout(STEP_TIMEOUT_MS) { exec(context, listOf("-hide_banner", "-y") + args, maxLines = 400) }
                 if (r.exitCode == 0) {
                     "OK" + if (showFirstLine) ": ${r.output.firstOrNull().orEmpty()}" else ""
                 } else {
@@ -166,21 +173,81 @@ object FfmpegRunner {
             report.append("• ").append(name).append(": ").append(outcome).append('\n')
         }
 
-        val video = listOf("-f", "lavfi", "-i", "testsrc2=size=320x240:rate=10:duration=1")
-        step("versi", listOf("-version"), showFirstLine = true)
-        step("encode libx264", listOf("-hide_banner", "-y") + video + listOf("-c:v", "libx264", "-f", "null", "-"))
-        step(
-            "encode libx264 1-thread",
-            listOf("-hide_banner", "-y") + video +
-                listOf("-c:v", "libx264", "-threads", "1", "-x264-params", "threads=1:lookahead-threads=1", "-f", "null", "-"),
-        )
-        step("encode mpeg4", listOf("-hide_banner", "-y") + video + listOf("-c:v", "mpeg4", "-f", "null", "-"))
-        step(
-            "encode aac",
-            listOf("-hide_banner", "-y", "-f", "lavfi", "-i", "sine=duration=1", "-c:a", "aac", "-f", "null", "-"),
-        )
-        for ((label, path) in inputs) {
-            step("baca $label", listOf("-hide_banner", "-y", "-t", "1", "-i", path, "-f", "null", "-"))
+        val synthetic = listOf("-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=1")
+        val toNull = listOf("-f", "null", "-")
+        val outA = File(workDir, "diag_a.mp4").absolutePath
+        val outB = File(workDir, "diag_b.mp4").absolutePath
+
+        try {
+            step("versi", listOf("-version"), showFirstLine = true)
+            step("mux mp4", synthetic + listOf("-c:v", "libx264", "-pix_fmt", "yuv420p", outA))
+            step("mux mp4 faststart", synthetic + listOf("-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", outB))
+            step(
+                "filter scale+crop",
+                synthetic + listOf("-vf", "scale=1080:1280:force_original_aspect_ratio=increase,crop=1080:1280") + toNull,
+            )
+            step(
+                "filter pad+setsar+fps",
+                synthetic + listOf(
+                    "-vf",
+                    "scale=1080:640:force_original_aspect_ratio=decrease,pad=1080:640:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30",
+                ) + toNull,
+            )
+            step(
+                "filter vstack",
+                listOf(
+                    "-f", "lavfi", "-i", "color=c=red:s=320x200:r=30:d=1",
+                    "-f", "lavfi", "-i", "color=c=blue:s=320x200:r=30:d=1",
+                    "-filter_complex", "[0:v][1:v]vstack=inputs=2[v]", "-map", "[v]",
+                ) + toNull,
+            )
+            if (watermark != null) {
+                step(
+                    "filter overlay PNG transparan",
+                    listOf(
+                        "-f", "lavfi", "-i", "color=c=green:s=1080x400:r=30:d=1",
+                        "-i", watermark,
+                        "-filter_complex", "[0:v][1:v]overlay=0:100,format=yuv420p[v]", "-map", "[v]", "-t", "1",
+                    ) + toNull,
+                )
+            }
+            step(
+                "audio resample 48k->44.1k + aac",
+                listOf(
+                    "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1",
+                    "-ar", "44100", "-ac", "2", "-c:a", "aac",
+                ) + toNull,
+            )
+            if (image != null) {
+                step("gambar bawah (-loop)", listOf("-loop", "1", "-framerate", "30", "-t", "1", "-i", image) + toNull)
+            }
+            if (video != null) {
+                step(
+                    "video asli: scale+crop",
+                    listOf("-t", "1", "-i", video, "-an", "-vf", "scale=1080:1280:force_original_aspect_ratio=increase,crop=1080:1280") + toNull,
+                )
+                step(
+                    "video asli: audio resample + aac",
+                    listOf("-t", "2", "-i", video, "-vn", "-ar", "44100", "-ac", "2", "-c:a", "aac") + toNull,
+                )
+            }
+            if (video != null && image != null && watermark != null) {
+                for (variant in FilterVariant.entries) {
+                    val full = FfmpegCommands.mainSegment(
+                        video, image, watermark, "-", VideoFit.CROP, mainHasAudio = true,
+                        variant = variant, faststart = false,
+                    )
+                    // Ganti output file dengan keluaran null dan batasi 1 detik.
+                    step("susunan penuh ${variant.label} (tanpa file)", full.dropLast(1) + listOf("-t", "1") + toNull)
+                }
+                val full = FfmpegCommands.mainSegment(
+                    video, image, watermark, outA, VideoFit.CROP, mainHasAudio = true,
+                    variant = FilterVariant.STANDARD, faststart = false,
+                )
+                step("susunan penuh vstack -> mp4", full.dropLast(1) + listOf("-t", "1", outA))
+            }
+        } finally {
+            runCatching { workDir.deleteRecursively() }
         }
         return report.toString().trimEnd()
     }

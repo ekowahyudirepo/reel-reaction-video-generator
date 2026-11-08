@@ -16,6 +16,7 @@ import com.ekowahyudi.reelreaction.pipeline.PipelineResult
 import com.ekowahyudi.reelreaction.pipeline.ReelPipeline
 import com.ekowahyudi.reelreaction.pipeline.Stage
 import com.ekowahyudi.reelreaction.pipeline.VideoFit
+import com.ekowahyudi.reelreaction.pipeline.WatermarkRenderer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.io.File
 
 sealed interface ProcessState {
     data object Idle : ProcessState
@@ -120,11 +122,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _settingsMessage.value = try {
                 app.ytReady.await().getOrThrow()
                 val s = settings.value
-                val inputs = listOfNotNull(
-                    s.bottomImagePath?.let { "gambar bawah" to it },
-                    s.outroPath?.let { "video penutup" to it },
+                val dir = File(app.cacheDir, "diag")
+                // Watermark contoh dibuat dengan renderer yang sama dengan pipeline.
+                val watermark = File(dir.apply { mkdirs() }, "watermark.png")
+                WatermarkRenderer.render("Youtube @Contoh", watermark)
+                "Hasil tes FFmpeg:\n" + FfmpegRunner.diagnose(
+                    app,
+                    video = s.outroPath,
+                    image = s.bottomImagePath,
+                    watermark = watermark.absolutePath,
+                    workDir = File(dir, "work"),
                 )
-                "Hasil tes FFmpeg:\n" + FfmpegRunner.diagnose(app, inputs)
             } catch (e: Exception) {
                 "Tes FFmpeg gagal dijalankan: ${e.message}"
             }
