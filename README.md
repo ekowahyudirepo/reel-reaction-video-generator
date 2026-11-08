@@ -85,8 +85,14 @@ Butuh JDK 17 dan Android SDK (compileSdk 35).
 ## Batasan
 
 - Hanya **arm64-v8a**, Android 10+ (minSdk 29).
-- Antrian berjalan selama aplikasi hidup; jika aplikasi ditutup paksa, job yang sedang berjalan ditandai gagal
-  dan bisa diulang (antrian yang belum jalan dilanjutkan saat aplikasi dibuka lagi).
-- Layar dijaga menyala selama antrian berjalan.
+- Saat antrian berjalan, aplikasi memakai **layanan latar depan** (notifikasi progres + wake lock), jadi proses
+  tetap jalan walau layar mati atau aplikasi ditinggal; notifikasi "Antrian selesai" muncul di akhir.
+  Izinkan notifikasi (Android 13+) dan, bila perlu, **Pengaturan → Jalan di latar belakang → Izinkan tanpa batas
+  baterai**. Sebagian merek HP (Xiaomi, Oppo, Vivo, dll.) butuh izin "Mulai otomatis"/"Aplikasi tidur" tambahan.
+- Android 15 membatasi layanan jenis *dataSync* sekitar 6 jam per 24 jam; antrian yang sangat panjang bisa
+  terhenti lalu dilanjutkan saat aplikasi dibuka lagi.
+- Jika aplikasi ditutup paksa, job yang sedang berjalan ditandai gagal dan bisa diulang (antrian yang belum
+  jalan dilanjutkan saat aplikasi dibuka lagi).
+- Layar dijaga menyala selama aplikasi terbuka dan antrian berjalan.
 - Video privat / butuh login tidak bisa diunduh. Jika unduhan tiba-tiba gagal, coba **Pengaturan → Perbarui yt-dlp**.
 - Pastikan kamu punya hak/izin memakai konten sumber.

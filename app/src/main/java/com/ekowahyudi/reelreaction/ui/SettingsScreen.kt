@@ -1,6 +1,13 @@
 package com.ekowahyudi.reelreaction.ui
 
+import android.content.Intent
 import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.app.NotificationManagerCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -145,6 +152,8 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 }
             }
 
+            BackgroundCard()
+
             SectionCard("yt-dlp") {
                 Text(
                     "Situs seperti YouTube sering berubah. Aplikasi memperbarui yt-dlp otomatis saat memproses, " +
@@ -250,6 +259,66 @@ private fun LayoutCard(
 
             TextButton(onClick = onDelete) { Text("Hapus layout", color = MaterialTheme.colorScheme.error) }
         }
+    }
+}
+
+/** Status dan pintasan pengecualian hemat baterai, supaya antrian tidak dimatikan sistem saat HP sleep. */
+@Composable
+private fun BackgroundCard() {
+    val context = LocalContext.current
+    var refresh by remember { mutableIntStateOf(0) }
+    val ignoring = remember(refresh) {
+        runCatching {
+            context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+        }.getOrDefault(false)
+    }
+    val notificationsOn = remember(refresh) { NotificationManagerCompat.from(context).areNotificationsEnabled() }
+
+    // Setelah kembali dari layar pengaturan sistem, status dibaca ulang.
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { refresh++ }
+
+    SectionCard("Jalan di latar belakang") {
+        Text(
+            "Saat antrian berjalan, aplikasi menampilkan notifikasi progres dan menjaga prosesor tetap aktif " +
+                "sehingga video tetap dibuat walau layar mati.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            if (notificationsOn) "Notifikasi: aktif" else "Notifikasi: mati (proses tetap jalan, tetapi progres tidak terlihat)",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            if (ignoring) "Hemat baterai: dikecualikan (disarankan)" else "Hemat baterai: belum dikecualikan",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+        )
+        if (!ignoring) {
+            Button(onClick = {
+                val direct = Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:${context.packageName}"),
+                )
+                val ok = runCatching { launcher.launch(direct) }.isSuccess
+                if (!ok) runCatching { launcher.launch(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+            }) { Text("Izinkan tanpa batas baterai") }
+        }
+        if (!notificationsOn) {
+            OutlinedButton(onClick = {
+                runCatching {
+                    launcher.launch(
+                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+                    )
+                }
+            }) { Text("Buka pengaturan notifikasi") }
+        }
+        Text(
+            "Beberapa merek HP (Xiaomi, Oppo, Vivo, Samsung, Huawei) punya pengaturan tambahan seperti " +
+                "\"Mulai otomatis\" atau \"Aplikasi tidur\". Jika proses masih terhenti saat layar mati, " +
+                "izinkan aplikasi ini di sana.",
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
