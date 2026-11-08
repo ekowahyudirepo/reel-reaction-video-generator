@@ -73,6 +73,11 @@ object UrlUtils {
     private val urlRegex = Regex("""https?://[^\s<>"']+""")
 
     /** Mengambil URL pertama dari teks (berguna saat memakai "Bagikan" dari aplikasi lain). */
-    fun extractUrl(text: String?): String? =
-        text?.let { urlRegex.find(it)?.value?.trimEnd('.', ',', ')', ']') }
+    fun extractUrl(text: String?): String? = extractAll(text).firstOrNull()
+
+    /** Mengambil semua URL dari teks (satu atau banyak, dipisah baris/spasi), tanpa duplikat persis. */
+    fun extractAll(text: String?): List<String> =
+        text?.let { t ->
+            urlRegex.findAll(t).map { it.value.trimEnd('.', ',', ')', ']', ';') }.filter { it.length > 8 }.distinct().toList()
+        }.orEmpty()
 }

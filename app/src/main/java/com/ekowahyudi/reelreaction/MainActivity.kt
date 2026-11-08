@@ -40,22 +40,25 @@ class MainActivity : ComponentActivity() {
         handleShare(intent)
     }
 
-    /** Link yang dibagikan dari YouTube/TikTok/dll. langsung diisi ke kolom URL. */
+    /** Link yang dibagikan dari YouTube/TikTok/dll. ditambahkan ke kolom link (bisa dibagikan berkali-kali). */
     private fun handleShare(intent: Intent?) {
         if (intent?.action != Intent.ACTION_SEND) return
-        UrlUtils.extractUrl(intent.getStringExtra(Intent.EXTRA_TEXT))?.let { viewModel.url = it }
+        val links = UrlUtils.extractAll(intent.getStringExtra(Intent.EXTRA_TEXT))
+        if (links.isEmpty()) return
+        val addition = links.joinToString("\n")
+        viewModel.input = if (viewModel.input.isBlank()) addition else viewModel.input.trimEnd() + "\n" + addition
     }
 }
 
 @Composable
 private fun AppRoot(viewModel: MainViewModel) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
-    val state by viewModel.state.collectAsState()
+    val running by viewModel.running.collectAsState()
 
-    // Layar tetap menyala selama proses berjalan supaya tidak terhenti saat HP terkunci otomatis.
+    // Layar tetap menyala selama antrian berjalan supaya proses tidak terhenti saat HP terkunci otomatis.
     val view = LocalView.current
-    val running = state is ProcessState.Running
-    SideEffect { view.keepScreenOn = running }
+    val busy = running != null
+    SideEffect { view.keepScreenOn = busy }
 
     BackHandler(enabled = showSettings) { showSettings = false }
 
