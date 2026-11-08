@@ -12,17 +12,22 @@ import com.ekowahyudi.reelreaction.data.EnqueueResult
 import com.ekowahyudi.reelreaction.data.JobStatus
 import com.ekowahyudi.reelreaction.data.JobWithOutputs
 import com.ekowahyudi.reelreaction.data.Layout
+import com.ekowahyudi.reelreaction.data.OutputRow
+import com.ekowahyudi.reelreaction.pipeline.DeleteResult
 import com.ekowahyudi.reelreaction.pipeline.FfmpegRunner
+import com.ekowahyudi.reelreaction.pipeline.MediaStoreSaver
 import com.ekowahyudi.reelreaction.pipeline.RunningInfo
 import com.ekowahyudi.reelreaction.pipeline.UrlUtils
 import com.ekowahyudi.reelreaction.pipeline.VideoFit
 import com.ekowahyudi.reelreaction.pipeline.WatermarkRenderer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -110,12 +115,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { app.queue.cancel(jobId) }
     }
 
-    /** Menghapus data job. URL-nya boleh diunduh lagi sesudahnya; file video di galeri tidak disentuh. */
-    fun deleteJob(jobId: Long) {
+    /**
+     * Menghapus data job. URL-nya boleh diunduh lagi sesudahnya. File video di galeri hanya ikut dihapus
+     * bila [deleteVideos] true.
+     */
+    fun deleteJob(jobId: Long, deleteVideos: Boolean = false) {
         viewModelScope.launch {
             if (running.value?.jobId == jobId) return@launch
+            var denied = 0
+            if (deleteVideos) {
+                withContext(Dispatchers.IO) {
+                    repo.outputs(jobId).filter { it.uri != null }.forEach { output ->
+                        if (MediaStoreSaver.deleteVideo(app, output.uri) == DeleteResult.DENIED) denied++
+                    }
+                }
+            }
             repo.deleteJob(jobId)
             File(app.filesDir, "sources/$jobId").deleteRecursively()
+            if (denied > 0) {
+                _message.value = "Data dihapus, tetapi $denied video tidak bisa dihapus dari aplikasi " +
+                    "(bukan milik aplikasi ini). Hapus lewat Galeri, folder Movies/ReelReaction."
+            }
+        }
+    }
+
+    /** Menghapus file video satu output dari perangkat; catatan link tetap ada (tetap dianggap sudah diunduh). */
+    fun deleteOutputVideo(output: OutputRow) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { MediaStoreSaver.deleteVideo(app, output.uri) }
+            if (result == DeleteResult.DENIED) {
+                _message.value = "Video tidak bisa dihapus dari aplikasi (bukan milik aplikasi ini). " +
+                    "Hapus lewat Galeri, folder Movies/ReelReaction."
+            } else {
+                repo.markOutputVideoDeleted(output.id)
+            }
         }
     }
 

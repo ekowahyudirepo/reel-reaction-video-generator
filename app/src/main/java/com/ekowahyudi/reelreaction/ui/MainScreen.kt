@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,8 +19,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -64,6 +68,8 @@ fun MainScreen(viewModel: MainViewModel, onOpenSettings: () -> Unit) {
     val message by viewModel.message.collectAsState()
     val clipboard = LocalClipboardManager.current
     var pendingDelete by remember { mutableStateOf<JobWithOutputs?>(null) }
+    var alsoDeleteVideos by remember { mutableStateOf(false) }
+    var pendingVideoDelete by remember { mutableStateOf<OutputRow?>(null) }
 
     val readyLayouts = layouts.count { it.isReady }
     val failed = jobs.count { it.job.status == JobStatus.FAILED }
@@ -172,29 +178,67 @@ fun MainScreen(viewModel: MainViewModel, onOpenSettings: () -> Unit) {
                     running = running?.takeIf { it.jobId == item.job.id },
                     onRetry = { viewModel.retry(item.job.id) },
                     onCancel = { viewModel.cancel(item.job.id) },
-                    onDelete = { pendingDelete = item },
+                    onDelete = {
+                        alsoDeleteVideos = false
+                        pendingDelete = item
+                    },
+                    onDeleteVideo = { pendingVideoDelete = it },
                 )
             }
         }
     }
 
     pendingDelete?.let { item ->
+        val videoCount = item.outputs.count { it.uri != null }
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
             title = { Text("Hapus data ini?") },
             text = {
-                Text(
-                    "Catatan dihapus dari daftar sehingga link ini boleh diunduh lagi. " +
-                        "Video yang sudah ada di galeri tidak ikut terhapus.",
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Catatan dihapus dari daftar sehingga link ini boleh diunduh lagi.")
+                    if (videoCount > 0) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { alsoDeleteVideos = !alsoDeleteVideos },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = alsoDeleteVideos, onCheckedChange = { alsoDeleteVideos = it })
+                            Text("Hapus juga $videoCount video di perangkat")
+                        }
+                    } else {
+                        Text("Video yang sudah ada di galeri tidak terpengaruh.", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.deleteJob(item.job.id)
+                    viewModel.deleteJob(item.job.id, deleteVideos = alsoDeleteVideos && videoCount > 0)
                     pendingDelete = null
                 }) { Text("Hapus") }
             },
             dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Batal") } },
+        )
+    }
+
+    pendingVideoDelete?.let { output ->
+        AlertDialog(
+            onDismissRequest = { pendingVideoDelete = null },
+            title = { Text("Hapus video dari perangkat?") },
+            text = {
+                Text(
+                    "File \"${output.displayName ?: output.layoutName}\" dihapus dari galeri dan tidak bisa " +
+                        "dikembalikan. Catatan link tetap ada, jadi link ini tetap dianggap sudah diunduh " +
+                        "(pakai \"Hapus data\" bila ingin mengunduhnya lagi).",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteOutputVideo(output)
+                    pendingVideoDelete = null
+                }) { Text("Hapus video") }
+            },
+            dismissButton = { TextButton(onClick = { pendingVideoDelete = null }) { Text("Batal") } },
         )
     }
 }
@@ -206,6 +250,7 @@ private fun JobCard(
     onRetry: () -> Unit,
     onCancel: () -> Unit,
     onDelete: () -> Unit,
+    onDeleteVideo: (OutputRow) -> Unit,
 ) {
     val job = item.job
     var expanded by remember { mutableStateOf(false) }
@@ -255,7 +300,7 @@ private fun JobCard(
                 }
             }
 
-            item.outputs.forEach { output -> OutputRowView(output, expanded) }
+            item.outputs.forEach { output -> OutputRowView(output, expanded, onDeleteVideo) }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (job.status == JobStatus.FAILED) {
@@ -273,7 +318,7 @@ private fun JobCard(
 }
 
 @Composable
-private fun OutputRowView(output: OutputRow, expanded: Boolean) {
+private fun OutputRowView(output: OutputRow, expanded: Boolean, onDeleteVideo: (OutputRow) -> Unit) {
     val context = LocalContext.current
     Column {
         Row(
@@ -290,6 +335,13 @@ private fun OutputRowView(output: OutputRow, expanded: Boolean) {
             Column(Modifier.weight(1f)) {
                 Text(output.layoutName, style = MaterialTheme.typography.bodyMedium)
                 output.displayName?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (output.status == OutputStatus.DONE && output.uri == null) {
+                    Text(
+                        "Video sudah dihapus dari perangkat",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 output.error?.let {
                     SelectionContainer {
                         Text(
@@ -306,6 +358,10 @@ private fun OutputRowView(output: OutputRow, expanded: Boolean) {
             if (output.status == OutputStatus.DONE && uri != null) {
                 TextButton(onClick = { playVideo(context, uri) }) { Text("Putar") }
                 TextButton(onClick = { shareVideo(context, uri) }) { Text("Bagikan") }
+                TextButton(
+                    onClick = { onDeleteVideo(output) },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text("Hapus") }
             }
         }
     }

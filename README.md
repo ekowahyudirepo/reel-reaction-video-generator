@@ -28,6 +28,10 @@ Aplikasi Android untuk membuat video reel 9:16 (1080×1920) bergaya *reaction* s
   Link dikenali dari kunci kanoniknya, jadi `youtu.be/ID`, `youtube.com/shorts/ID?si=…` dan `watch?v=ID`
   dianggap sama. Catatan baru hilang jika kamu memilih **Hapus data**; menghapus file video di galeri
   **tidak** menghapus catatan, sehingga link itu tetap dianggap sudah diunduh.
+- **Hapus video di perangkat.** Tombol **Hapus** di tiap hasil menghapus file videonya dari galeri
+  (catatan link tetap ada, jadi tetap dianggap sudah diunduh). **Hapus data** juga bisa sekaligus menghapus
+  semua video job itu lewat kotak centang. Video yang bukan milik aplikasi (mis. setelah pasang ulang)
+  tidak bisa dihapus dari aplikasi; hapus lewat Galeri.
 - **Database SQLite** (`reel.db`): layout, antrian/riwayat, dan hasil per layout.
 
 ## Cara pakai

@@ -273,6 +273,15 @@ class Repository(context: Context) {
         db.update("outputs", values, "id = ?", arrayOf(id.toString()))
     }
 
+    /**
+     * Menandai video sebuah output sudah dihapus dari perangkat. Barisnya sengaja dipertahankan (status tetap
+     * DONE, uri kosong) sehingga link-nya tetap dianggap sudah diunduh; hanya "Hapus data" yang membukanya lagi.
+     */
+    suspend fun markOutputVideoDeleted(outputId: Long) = write {
+        val values = ContentValues().apply { putNull("uri") }
+        db.update("outputs", values, "id = ?", arrayOf(outputId.toString()))
+    }
+
     private fun loadOutputsFor(jobIds: List<Long>): List<OutputRow> {
         if (jobIds.isEmpty()) return emptyList()
         val placeholders = jobIds.joinToString(",") { "?" }

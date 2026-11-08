@@ -8,9 +8,34 @@ import android.provider.MediaStore
 import java.io.File
 import java.io.IOException
 
+/** Hasil menghapus video dari galeri. */
+enum class DeleteResult {
+    /** File berhasil dihapus. */
+    DELETED,
+
+    /** File sudah tidak ada (mis. sudah dihapus lewat Galeri); dianggap berhasil. */
+    ALREADY_GONE,
+
+    /** Sistem menolak (file bukan milik aplikasi ini, mis. setelah pasang ulang). Hapus lewat Galeri. */
+    DENIED,
+}
+
 object MediaStoreSaver {
 
     const val FOLDER = "ReelReaction"
+
+    /** Menghapus video final dari galeri/penyimpanan perangkat. */
+    fun deleteVideo(context: Context, uriString: String?): DeleteResult {
+        if (uriString.isNullOrBlank()) return DeleteResult.ALREADY_GONE
+        return try {
+            val rows = context.contentResolver.delete(Uri.parse(uriString), null, null)
+            if (rows > 0) DeleteResult.DELETED else DeleteResult.ALREADY_GONE
+        } catch (_: SecurityException) {
+            DeleteResult.DENIED
+        } catch (_: IllegalArgumentException) {
+            DeleteResult.ALREADY_GONE
+        }
+    }
 
     /** Menyimpan video final ke galeri (Movies/ReelReaction). */
     fun saveVideo(context: Context, source: File, displayName: String): Uri {
