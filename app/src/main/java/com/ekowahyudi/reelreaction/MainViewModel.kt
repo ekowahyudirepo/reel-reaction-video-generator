@@ -9,6 +9,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ekowahyudi.reelreaction.data.ReelSettings
 import com.ekowahyudi.reelreaction.data.SettingsRepository
+import com.ekowahyudi.reelreaction.pipeline.FfmpegRunner
 import com.ekowahyudi.reelreaction.pipeline.PipelineException
 import com.ekowahyudi.reelreaction.pipeline.PipelineProgress
 import com.ekowahyudi.reelreaction.pipeline.PipelineResult
@@ -108,6 +109,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "yt-dlp terbaru: ${version ?: "-"}"
             } catch (e: Exception) {
                 "Gagal memperbarui yt-dlp: ${e.message ?: "periksa koneksi internet"}"
+            }
+        }
+    }
+
+    /** Tes kecil untuk mengetahui bagian FFmpeg mana yang bermasalah di HP ini. */
+    fun runDiagnostics() {
+        viewModelScope.launch {
+            _settingsMessage.value = "Menguji FFmpeg… (bisa sampai 1 menit)"
+            _settingsMessage.value = try {
+                app.ytReady.await().getOrThrow()
+                val s = settings.value
+                val inputs = listOfNotNull(
+                    s.bottomImagePath?.let { "gambar bawah" to it },
+                    s.outroPath?.let { "video penutup" to it },
+                )
+                "Hasil tes FFmpeg:\n" + FfmpegRunner.diagnose(app, inputs)
+            } catch (e: Exception) {
+                "Tes FFmpeg gagal dijalankan: ${e.message}"
             }
         }
     }

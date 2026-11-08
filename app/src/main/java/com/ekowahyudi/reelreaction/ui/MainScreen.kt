@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -213,7 +214,10 @@ private fun ErrorCard(message: String, onDismiss: () -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Gagal", fontWeight = FontWeight.Bold)
-            Text(message, style = MaterialTheme.typography.bodyMedium)
+            // Bisa ditekan lama untuk memilih & menyalin teks error.
+            SelectionContainer {
+                Text(message, style = MaterialTheme.typography.bodyMedium)
+            }
             TextButton(onClick = onDismiss) { Text("Tutup") }
         }
     }

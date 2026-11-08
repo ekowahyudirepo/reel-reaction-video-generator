@@ -90,22 +90,32 @@ class ReelPipeline(private val app: ReelApp) {
 
             val mainSegment = File(workDir, "main_segment.mp4")
             val editEnd = if (outro != null) 0.85f else 0.97f
-            FfmpegRunner.run(
-                app,
-                FfmpegCommands.mainSegment(
-                    mainVideo = source.absolutePath,
-                    bottomImage = bottomImage.absolutePath,
-                    watermarkPng = watermarkPng.absolutePath,
-                    output = mainSegment.absolutePath,
-                    fit = settings.videoFit,
-                    mainHasAudio = sourceProbe.hasAudio,
-                ),
+            val profile = encodeWithFallback(
+                profiles = EncodeProfile.entries,
                 totalDurationMs = sourceProbe.durationMs,
-            ) { frac ->
+                build = { p ->
+                    FfmpegCommands.mainSegment(
+                        mainVideo = source.absolutePath,
+                        bottomImage = bottomImage.absolutePath,
+                        watermarkPng = watermarkPng.absolutePath,
+                        output = mainSegment.absolutePath,
+                        fit = settings.videoFit,
+                        mainHasAudio = sourceProbe.hasAudio,
+                        profile = p,
+                    )
+                },
+                diagnosticInputs = {
+                    listOf(
+                        "video unduhan" to source.absolutePath,
+                        "gambar bawah" to bottomImage.absolutePath,
+                        "watermark" to watermarkPng.absolutePath,
+                    )
+                },
+            ) { frac, label ->
                 report(
                     PipelineProgress(
                         Stage.EDIT, 0.40f + (editEnd - 0.40f) * frac,
-                        "${(frac * 100).toInt()}%", watermark,
+                        "${(frac * 100).toInt()}% ($label)", watermark,
                     ),
                 )
             }
@@ -117,15 +127,20 @@ class ReelPipeline(private val app: ReelApp) {
                 if (!outroProbe.hasVideo) throw PipelineException("Video penutup tidak valid.")
 
                 val outroSegment = File(workDir, "outro_segment.mp4")
-                FfmpegRunner.run(
-                    app,
-                    FfmpegCommands.outroSegment(
-                        outroVideo = outro.absolutePath,
-                        output = outroSegment.absolutePath,
-                        outroHasAudio = outroProbe.hasAudio,
-                    ),
+                // Outro harus memakai encoder yang sama dengan segmen utama agar bisa digabung tanpa re-encode.
+                encodeWithFallback(
+                    profiles = listOf(profile),
                     totalDurationMs = outroProbe.durationMs,
-                ) { frac ->
+                    build = { p ->
+                        FfmpegCommands.outroSegment(
+                            outroVideo = outro.absolutePath,
+                            output = outroSegment.absolutePath,
+                            outroHasAudio = outroProbe.hasAudio,
+                            profile = p,
+                        )
+                    },
+                    diagnosticInputs = { listOf("video penutup" to outro.absolutePath) },
+                ) { frac, _ ->
                     report(
                         PipelineProgress(
                             Stage.OUTRO, 0.85f + 0.10f * frac,
@@ -163,6 +178,34 @@ class ReelPipeline(private val app: ReelApp) {
         } finally {
             withContext(Dispatchers.IO) { workDir.deleteRecursively() }
         }
+    }
+
+    /**
+     * Menjalankan FFmpeg dengan tiap mode di [profiles] sampai ada yang berhasil dan mengembalikan mode itu.
+     * Bila semuanya gagal, menjalankan diagnostik lalu melempar [PipelineException] berisi ringkasan.
+     */
+    private suspend fun encodeWithFallback(
+        profiles: List<EncodeProfile>,
+        totalDurationMs: Long,
+        build: (EncodeProfile) -> List<String>,
+        diagnosticInputs: () -> List<Pair<String, String>>,
+        onProgress: (Float, String) -> Unit,
+    ): EncodeProfile {
+        val failures = mutableListOf<String>()
+        for (profile in profiles) {
+            try {
+                FfmpegRunner.run(app, build(profile), totalDurationMs) { onProgress(it, profile.label) }
+                return profile
+            } catch (e: FfmpegException) {
+                val lastLine = e.tail.lineSequence().lastOrNull { it.isNotBlank() }
+                val signal = if (e.exitCode > 128) " sinyal ${e.exitCode - 128}" else ""
+                failures += "• ${profile.label}: kode ${e.exitCode}$signal" + (lastLine?.let { " — $it" } ?: "")
+            }
+        }
+        val diagnostics = FfmpegRunner.diagnose(app, diagnosticInputs())
+        throw PipelineException(
+            "Proses edit video gagal di semua mode.\n${failures.joinToString("\n")}\n\nDiagnostik FFmpeg:\n$diagnostics",
+        )
     }
 
     private data class Metadata(

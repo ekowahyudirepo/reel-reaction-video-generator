@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -84,7 +85,9 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             if (importing) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+            message?.let {
+                SelectionContainer { Text(it, color = MaterialTheme.colorScheme.primary) }
+            }
 
             LayoutPreviewCard()
 
@@ -148,6 +151,14 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 OutlinedButton(onClick = viewModel::updateYtDlp) { Text("Perbarui yt-dlp") }
+            }
+
+            SectionCard("Diagnostik") {
+                Text(
+                    "Jika pembuatan video gagal di tahap edit, jalankan tes ini lalu kirim hasilnya.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedButton(onClick = viewModel::runDiagnostics) { Text("Tes FFmpeg") }
             }
         }
     }

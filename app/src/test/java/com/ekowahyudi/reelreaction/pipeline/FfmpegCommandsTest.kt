@@ -58,6 +58,49 @@ class FfmpegCommandsTest {
     }
 
     @Test
+    fun defaultProfileUsesMultithreadedX264() {
+        val args = main()
+        assertTrue(args.containsAll(listOf("-c:v", "libx264")))
+        assertFalse(args.contains("-threads"))
+        assertFalse(args.contains("-filter_threads"))
+    }
+
+    @Test
+    fun singleThreadProfileLimitsEveryThreadPool() {
+        val args = FfmpegCommands.mainSegment(
+            "in.mp4", "b.jpg", "wm.png", "out.mp4", VideoFit.CROP, true,
+            profile = EncodeProfile.X264_SINGLE_THREAD,
+        )
+        assertTrue(args.containsAll(listOf("-c:v", "libx264", "-filter_threads", "1")))
+        // satu "-threads 1" sebelum tiap dari 3 input + satu untuk encoder
+        assertEquals(4, args.count { it == "-threads" })
+        assertTrue(args.contains("threads=1:lookahead-threads=1"))
+    }
+
+    @Test
+    fun mpeg4ProfileAvoidsX264() {
+        val main = FfmpegCommands.mainSegment(
+            "in.mp4", "b.jpg", "wm.png", "out.mp4", VideoFit.CROP, true,
+            profile = EncodeProfile.MPEG4,
+        )
+        val outro = FfmpegCommands.outroSegment("o.mp4", "o2.mp4", true, profile = EncodeProfile.MPEG4)
+        for (args in listOf(main, outro)) {
+            assertTrue(args.containsAll(listOf("-c:v", "mpeg4")))
+            assertFalse(args.contains("libx264"))
+        }
+    }
+
+    @Test
+    fun outputIsAlwaysTheLastArgument() {
+        for (p in EncodeProfile.entries) {
+            val main = FfmpegCommands.mainSegment("i", "b", "w", "OUT", VideoFit.FIT, false, profile = p)
+            val outro = FfmpegCommands.outroSegment("i", "OUT", false, profile = p)
+            assertEquals("OUT", main.last())
+            assertEquals("OUT", outro.last())
+        }
+    }
+
+    @Test
     fun concatCopiesStreams() {
         val args = FfmpegCommands.concat("list.txt", "final.mp4")
         assertTrue(args.containsAll(listOf("-f", "concat", "-c", "copy")))
